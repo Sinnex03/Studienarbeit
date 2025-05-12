@@ -49,7 +49,7 @@ def server_thread():
                                 print("Received:", last_msg)
                             print(f"{last_msg}\n", end='')
     
-                            update_display(last_msg)
+                            update_display(last_msg) 
                             elapsed=time.time()-start_time
                             print(f"Time taken for this round: {elapsed:.4f} seconds")
 
@@ -65,9 +65,11 @@ def update_display(msg):
     try:
         # Parse the JSON message
         data = json.loads(msg)
+
+
         # Extract xpos and ypos from the 'point' dictionary
         xpos, ypos = data.get('point', {}).get('position', [None, None])
-
+    
         # Check if xpos and ypos are not None
         if xpos is not None and ypos is not None:
             # Update the GUI with the received coordinates
@@ -79,6 +81,7 @@ def update_display(msg):
 
             # Visualize sensors
             visualize_sensors(sensor_values)
+#            print(f"Received data: {data}")
         else:
             print("Invalid message format:", msg)
 

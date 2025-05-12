@@ -15,7 +15,7 @@ REM same here: cmake --build . --config Debug --target all -j 10
 set SCRIPT_DIR=%~dp0
 
 REM Start the C++ program in a new command prompt window
-start /min cmd.exe /k "%SCRIPT_DIR%\\build\\Studienarbeit.exe"
+start /min cmd.exe /k "%SCRIPT_DIR%\build\Debug\Studienarbeit.exe"
 
 REM Start the first Python script in a new command prompt window
 start /min cmd.exe /k "python.exe %SCRIPT_DIR%/src/DataRetrievalAndUi/ui.py"

@@ -13,7 +13,6 @@ import asyncio
 import websockets
 
 
-
 # Set the server address and port
 port= 12345
 clients = set()
@@ -35,7 +34,7 @@ def init_serials():
         sensors[i]['serial']= serial.Serial(sensors[i]["serial_port"], 115200, timeout=0.05, rtscts=1)
         try:
             sensors[i]['serial'].isOpen()
-            print("anchor2 (first anchor) is opened!")
+            print(f"anchor{i} (first anchor) is opened!")
 
         except IOError:
             sensors[i]['serial'].close()
@@ -43,7 +42,67 @@ def init_serials():
             print("port was already open, was closed and opened again!")
     
 
+risk_speed = None
 
+def calculate_speed_along_line(current_angles, previous_angles, distance_between_antennas, last_time):
+    """
+    Berechnet die Geschwindigkeit des Senders entlang der Linie zwischen den beiden Antennen.
+    @param current_angles Aktuelle Winkel des Senders zu den beiden Antennen.
+    @param previous_angles Vorherige Winkel des Senders zu den beiden Antennen.
+    @param distance_between_antennas Abstand zwischen den beiden Antennen.
+    @param last_time Zeitstempel der vorherigen Messung.
+    @return Geschwindigkeit des Senders entlang der Linie und aktualisierte Winkel und Zeit.
+    """
+    # Prüfen, ob vorherige Daten vorhanden sind
+    if previous_angles is None:
+        return 0, current_angles, time.time()
+
+    # Zeitunterschied berechnen
+    current_time = time.time()
+    time_difference = current_time - last_time
+    
+    # Winkeländerungen zu den beiden Antennen berechnen
+    delta_angle_1 = math.radians(current_angles[0]['val'] - previous_angles[0]['val'])
+    delta_angle_2 = math.radians(current_angles[1]['val'] - previous_angles[1]['val'])
+    
+    # Parallelbewegung berechnen
+    parallel_distance_change = abs(distance_between_antennas * (delta_angle_1 - delta_angle_2) / 2)
+    
+    # Geschwindigkeit entlang der Linie berechnen
+    speed_along_line = parallel_distance_change / time_difference if time_difference > 0 else 0
+    
+    return speed_along_line, current_angles, current_time
+
+
+def calculate_risk_level(speed_along_line, angle_antenna_1, angle_antenna_2):
+    """
+    @brief Calculate risk level depending on distance and speed 
+    """
+
+    if ((angle_antenna_1 < 67 and angle_antenna_1 > 45) and (angle_antenna_2 < 22 and angle_antenna_2 >=0)) or ((angle_antenna_1 < 45 and angle_antenna_1 > 22) and angle_antenna_2 < 45) or (angle_antenna_1 < 22 and angle_antenna_2 < 45):
+        risk_position = 1
+    elif angle_antenna_1 > 67 or ((angle_antenna_1 < 67 and angle_antenna_1 > 45) and (angle_antenna_2 < 67 and angle_antenna_2 > 22)):
+        risk_position = 2
+    elif ((angle_antenna_1 < 67 and angle_antenna_1 > 45) and (angle_antenna_2 > 67)) or ((angle_antenna_1 < 45 and angle_antenna_1 > 22) and (angle_antenna_2 > 45)) or (angle_antenna_1 < 22 and angle_antenna_2 > 45):
+        risk_position = 3
+    else: 0
+
+    if speed_along_line > 0 and speed_along_line < 1:
+        risk_speed = 2
+    elif speed_along_line >= 1:
+        risk_speed = 3
+    else:
+        risk_speed = 1
+
+    if risk_speed == 3 or risk_position == 3:
+        risk = 3
+    elif risk_speed == 2 or risk_position == 2:
+        risk = 2
+    else:
+        risk = 1
+
+    return risk
+    
 
 
 def getanchor(sensor):
@@ -73,7 +132,7 @@ def on_close():
         s['serial'].close()
     exit()
 
-def getValues(lastvalue):
+def getValues(results):
     """
     @brief Retrieve and process values from the anchor nodes.
     @param theta2_offset Azimuth offset for the first anchor node.
@@ -148,8 +207,10 @@ def send_data_to_all_clients(data):
     global num_pack
     num_pack=num_pack+1
     spinner_chars = ['/', '|', '\\', '-']
-    datastruct=json.loads(data)
+    datastruct=json.loads(data) 
+    
     print(f"\rSending to {len(client_sockets)} clients[{num_pack}]{spinner_chars[num_pack % len(spinner_chars)]} val0:{datastruct[0]["val"]} val1:{datastruct[1]["val"]}", end='')
+
     for client_socket in client_sockets:
         try:
             client_socket.sendall(data.encode('utf-8'))
@@ -222,13 +283,30 @@ def main():
     # Your Bluetooth read logic goes here
     init_serials()
     temp=[None]
+
+    last_angles = None
+    last_time = time.time()
+    distance_between_antennas = 0.5 
+
     while True:
         try:
             val = getValues(temp)
             if val!=0:
                 temp=val
+
+                speed_along_line, last_angles, last_time = calculate_speed_along_line(temp, last_angles, distance_between_antennas, last_time)
+
+                angle_antenna_1 = last_angles[0]['val']
+                angle_antenna_2 = last_angles[1]['val']
+
+                risk = calculate_risk_level(speed_along_line, angle_antenna_1, angle_antenna_2)
+
+                for i in range(len(temp)):
+                    temp[i]['speed_along_line'] = speed_along_line
+                    temp[i]['risk_level'] = risk
+                
                 message_final = json.dumps(temp)
-                #print(message_final)
+                print(message_final)
                 send_data_to_all_clients(message_final)
         except Exception as e:
             None
